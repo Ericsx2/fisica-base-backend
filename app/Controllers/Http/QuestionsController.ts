@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import type { HttpContextContract } from '@ioc:Adonis/Core/HttpContext'
-import Drive from '@ioc:Adonis/Core/Drive'
-import Exam from 'App/Models/Exam'
 import Question from 'App/Models/Question'
 import Subject from 'App/Models/Subject'
+import { uploadFile } from 'App/Services/UploadFile'
 
 export default class QuestionsController {
   public async index({ response }: HttpContextContract) {
@@ -25,10 +24,6 @@ export default class QuestionsController {
       'subject_id',
     ])
 
-    const question_image = request.file('question_image')
-    const feedback_image = request.file('feedback_image')
-    const feedback_video = request.file('feedback_video')
-
     const subject = await Subject.findBy('id', subject_id)
 
     if (!subject) {
@@ -46,18 +41,20 @@ export default class QuestionsController {
       return response.status(500)
     }
 
-    if (question_image) {
-      const s3 = Drive.use('s3')
+    try {
+      const question_image = request.file('question_image')
+      const feedback_image = request.file('feedback_image')
+      const feedback_video = request.file('feedback_video')
+      if (question_image)
+        question.merge({ image_url: await uploadFile(question_image, 'questions_images') })
+      if (feedback_image)
+        question.merge({ feedback_image_url: await uploadFile(feedback_image, 'feedback_images') })
+      if (feedback_video)
+        question.merge({ feedback_video_url: await uploadFile(feedback_video, 'feedback_videos') })
 
-      await question_image.moveToDisk(
-        'questions_images',
-        { name: `${question.id}.${question_image.extname}`, visibility: 'public' },
-        's3'
-      )
-
-      const image_url = await Drive.getUrl(question_image.filePath as string)
-
-      console.log(image_url)
+      await question.save()
+    } catch (error) {
+      response.json({ error })
     }
 
     return response.status(200)
